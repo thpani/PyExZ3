@@ -16,18 +16,6 @@ def myprint(color, s, *args):
   else:
     print(*args)
 
-class bcolors:
-    SUCCESS = '\033[32m'
-    WARNING = '\033[33m'
-    FAIL = '\033[31m'
-    ENDC = '\033[0m'
-
-def myprint(color, s, *args):
-  if sys.stdout.isatty():
-    print(color, s, bcolors.ENDC, *args)
-  else:
-    print(s, *args)
-
 parser = OptionParser()
 (options, args) = parser.parse_args()
 
