@@ -59,40 +59,39 @@ class Z3Wrapper(object):
 
 	def _findModel(self):
 		self.N = 32
-		while self.N <= 128:
+		self.bound = (1 << 4) - 1
+		while self.N <= 64:
 			self.solver.push()
 			(ret,mismatch) = self._findModel2()
 			if (not mismatch):
 				break
 			self.solver.pop()
 			self.N = self.N+8
-			print("expanded bit width to "+str(self.N))
+			if self.N <= 64: print("expanded bit width to "+str(self.N)) 
 		#print("Assertions")
 		#print(self.solver.assertions())
 		if ret == unsat:
 			self.log.warning("Z3: UNSAT")
-			self.solver.pop()
-			return None
+			res = None
 		elif ret == unknown:
 			self.log.error("Z3: UNKNOWN")
-			self.solver.pop()
-			return None
-		res = self._getModel()
-		self.solver.pop()
+			res = None
+		else:
+			res = self._getModel()
+		if self.N<=64: self.solver.pop()
 		return res
 
 	def _findModel2(self):
 		self._generateZ3()
 		int_vars = self._getIntVars()
 		res = unsat
-		bound = (1 << 4) - 1
-		while res == unsat and bound < (1 << self.N):
+		while res == unsat and self.bound < (1 << self.N):
 			self.solver.push()
-			constraints = self._boundIntegers(int_vars,bound)
+			constraints = self._boundIntegers(int_vars,self.bound)
 			self.solver.assert_exprs(constraints)
 			res = self.solver.check()
 			if res == unsat:
-				bound = (bound << 1)+1
+				self.bound = (self.bound << 1)+1
 				self.solver.pop()
 		if res == sat:
 			# Does concolic agree with Z3? If not, it may be due to overflow
@@ -110,11 +109,7 @@ class Z3Wrapper(object):
 		return (res,False)
 
 	def _getIntVars(self):
-		int_vars = []
-		for v in self.z3_vars.items():
-			if isinstance(v[1],BitVecRef):
-				int_vars.append(v[1]) 
-		return int_vars
+	 	return [ v[1] for v in self.z3_vars.items() if isinstance(v[1],BitVecRef) ]
 
 	def _boundIntegers(self,vars,val):
 		bval = BitVecVal(val,self.N,self.solver.ctx)
@@ -196,7 +191,7 @@ class Z3Wrapper(object):
 		elif isinstance(expr, SymbolicType):
 			return self._astToZ3Expr(expr.expr,env)
 
-		elif isinstance(expr, int) or isinstance(expr, long):
+		elif isinstance(expr, int):
 			if env == None:
 				return self._int2BitVec(expr)
 			else:

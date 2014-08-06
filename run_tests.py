@@ -2,6 +2,19 @@ import os
 import re
 import sys
 from optparse import OptionParser
+from sys import platform as _platform
+
+class bcolors:
+    SUCCESS = '\033[32m'
+    WARNING = '\033[33m'
+    FAIL = '\033[31m'
+    ENDC = '\033[0m'
+
+def myprint(color, s, *args):
+  if _platform != "win32" and sys.stdout.isatty():
+    print(color, s, bcolors.ENDC, *args)
+  else:
+    print(*args)
 
 class bcolors:
     SUCCESS = '\033[32m'
