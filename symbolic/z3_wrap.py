@@ -14,14 +14,14 @@ class Z3Wrapper(object):
 		self.solver = Solver()
 		self.z3_vars = {}
 		self.N = 32
-		self.asserts = None
-		self.query = None
+		self.pred_asserts = None
+		self.pred_query = None
 
 	def findCounterexample(self, asserts, query):
 		"""Tries to find a counterexample to the query while
 	  	 asserts remains valid."""
-		self.asserts = asserts
-		self.query = query
+		self.pred_asserts = asserts
+		self.pred_query = query
 		return self._findModel()
 
 	# private
@@ -42,11 +42,11 @@ class Z3Wrapper(object):
 	# turn the validity query (assertions => query) into satisfiability in Z3
 	def _generateZ3(self):
 		self.z3_vars = {}
-		self.solver.assert_exprs([self._to_Z3(p) for p in self.asserts])
-		self.solver.assert_exprs(Not(self._to_Z3(self.query)))
+		self.solver.assert_exprs([self._to_Z3(p) for p in self.pred_asserts])
+		self.solver.assert_exprs(Not(self._to_Z3(self.pred_query)))
 
 	def _to_Z3(self,pred,env=None):
-		sym_expr = self._astToZ3Expr(pred.expr,env)
+		sym_expr = self._astToZ3Expr(pred.symtype,env)
 		if env == None:
 			if not is_bool(sym_expr):
 				sym_expr = sym_expr != self._int2BitVec(0)
@@ -98,14 +98,16 @@ class Z3Wrapper(object):
 			model = self._getModel()
 			self.solver.pop()
 			mismatch = False
-			for a in self.asserts:
+			for a in self.pred_asserts:
 				eval = self._to_Z3(a,model)
 				if (not eval):
 					mismatch = True
 					break
 			if (not mismatch):
-				mismatch = not (not self._to_Z3(self.query,model))
+				mismatch = not (not self._to_Z3(self.pred_query,model))
 			return (res,mismatch)
+		elif res == unknown:
+			self.solver.pop()
 		return (res,False)
 
 	def _getIntVars(self):
@@ -134,50 +136,51 @@ class Z3Wrapper(object):
 
 	# add concrete evaluation to this, to check
 	def _astToZ3Expr(self,expr,env=None):
-		if isinstance(expr, ast.BinOp):
-			z3_l = self._astToZ3Expr(expr.left,env)
-			z3_r = self._astToZ3Expr(expr.right,env)
+		if isinstance(expr,list):
+			op = expr[0]
+			args = [ self._astToZ3Expr(a,env) for a in expr[1:] ]
+			z3_l,z3_r = args[0],args[1]
 
 			# arithmetical operations
-			if isinstance(expr.op, ast.Add):
+			if isinstance(op, ast.Add):
 				return z3_l + z3_r
-			elif isinstance(expr.op, ast.Sub):
+			elif isinstance(op, ast.Sub):
 				return z3_l - z3_r
-			elif isinstance(expr.op, ast.Mult):
+			elif isinstance(op, ast.Mult):
 				return z3_l * z3_r
-			elif isinstance(expr.op, ast.Div):
+			elif isinstance(op, ast.Div):
 				return z3_l / z3_r
-			elif isinstance(expr.op, ast.Mod):
+			elif isinstance(op, ast.Mod):
 				return z3_l % z3_r
 
 			# bitwise
-			elif isinstance(expr.op, ast.LShift):
+			elif isinstance(op, ast.LShift):
 				return z3_l << z3_r
-			elif isinstance(expr.op, ast.RShift):
+			elif isinstance(op, ast.RShift):
 				return z3_l >> z3_r
-			elif isinstance(expr.op, ast.BitXor):
+			elif isinstance(op, ast.BitXor):
 				return z3_l ^ z3_r
-			elif isinstance(expr.op, ast.BitOr):
+			elif isinstance(op, ast.BitOr):
 				return z3_l | z3_r
-			elif isinstance(expr.op, ast.BitAnd):
+			elif isinstance(op, ast.BitAnd):
 				return z3_l & z3_r
 
 			# equality gets coerced to integer
-			elif isinstance(expr.op, ast.Eq):
+			elif isinstance(op, ast.Eq):
 				return self._wrapIf(z3_l == z3_r,env)
-			elif isinstance(expr.op, ast.NotEq):
+			elif isinstance(op, ast.NotEq):
 				return self._wrapIf(z3_l != z3_r,env)
-			elif isinstance(expr.op, ast.Lt):
+			elif isinstance(op, ast.Lt):
 				return self._wrapIf(z3_l < z3_r,env)
-			elif isinstance(expr.op, ast.Gt):
+			elif isinstance(op, ast.Gt):
 				return self._wrapIf(z3_l > z3_r,env)
-			elif isinstance(expr.op, ast.LtE):
+			elif isinstance(op, ast.LtE):
 				return self._wrapIf(z3_l <= z3_r,env)
-			elif isinstance(expr.op, ast.GtE):
+			elif isinstance(op, ast.GtE):
 				return self._wrapIf(z3_l >= z3_r,env)
 
 			else:
-				utils.crash("Unknown BinOp during conversion from ast to Z3 (expressions): %s" % expr.op)
+				utils.crash("Unknown operator during conversion from ast to Z3 (expressions): %s" % op)
 
 		elif isinstance(expr, SymbolicInteger):
 			if expr.isVariable():
